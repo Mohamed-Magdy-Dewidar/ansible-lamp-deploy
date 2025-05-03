@@ -1,0 +1,14 @@
+- name: Install PHP and Apache PHP module
+  apt:
+    name: "{{ item }}"
+    state: present
+    update_cache: yes
+  loop:
+    - php
+    - libapache2-mod-php
+
+- name: Restart Apache to load PHP module
+  service:
+    name: apache2
+    state: restarted
+

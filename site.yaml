@@ -1,0 +1,16 @@
+---
+- name: Deploy LAMP Stack on LocalHost
+  hosts: webservers
+  become: true
+  vars_files:
+    - group_vars/all/vault.yml  # For production, keep passwords here
+
+  vars:
+    # Default value (override with vault in production)
+    mysql_root_password: "SecurePass123"  
+
+  roles:
+    - { role: apache, tags: ['apache'] }
+    - { role: php, tags: ['php'] }
+    - { role: firewall, tags: ['firewall'] }
+    - { role: mysql, tags: ['mysql'] }

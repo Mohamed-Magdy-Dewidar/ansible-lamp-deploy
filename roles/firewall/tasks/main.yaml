@@ -1,0 +1,27 @@
+---
+- name: Install UFW
+  apt:
+    name: ufw
+    state: present
+    update_cache: yes
+
+- name: Allow OpenSSH
+  ufw:
+    rule: allow
+    name: OpenSSH
+    state: enabled
+
+- name: Allow HTTP and HTTPS ports
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+    state: enabled
+  loop:
+    - 80
+    - 443
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+    policy: deny  # Optional: sets default policy to deny

@@ -1,0 +1,145 @@
+
+# ---
+# - name: Install MySQL dependencies
+#   apt:
+#     name: 
+#       - mysql-server
+#       - python3-pymysql
+#     state: present
+#     update_cache: yes
+
+# - name: Ensure MySQL service is running
+#   service:
+#     name: mysql
+#     state: started
+#     enabled: yes
+
+# - name: Wait for MySQL to be ready
+#   wait_for:
+#     port: 3306
+#     timeout: 30
+
+# - name: Set root password (direct method)
+#   shell: |
+#     sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ mysql_root_password }}'; FLUSH PRIVILEGES;"
+#   no_log: true
+#   register: set_root_pw
+#   changed_when: "'already exists' not in set_root_pw.stderr"
+
+# - name: Create .my.cnf for automatic authentication
+#   template:
+#     src: my.cnf.j2
+#     dest: /root/.my.cnf
+#     owner: root
+#     mode: 0600
+#   no_log: true
+
+# - name: Secure MySQL installation
+#   shell: mysql_secure_installation <<EOF
+#     {{ mysql_root_password }}
+#     n
+#     y
+#     y
+#     y
+#     y
+#     EOF
+#   no_log: true
+#   when: set_root_pw.changed  # Only run if password was changed
+
+
+---
+- name: Install MySQL dependencies
+  apt:
+    name: 
+      - mysql-server
+      - python3-pymysql
+      - expect  # Required for automated mysql_secure_installation
+    state: present
+    update_cache: yes
+
+- name: Ensure MySQL service is running
+  service:
+    name: mysql
+    state: started
+    enabled: yes
+
+- name: Wait for MySQL to be ready
+  wait_for:
+    path: /var/run/mysqld/mysqld.sock
+    timeout: 30
+
+- name: Set root password (direct method)
+  shell: |
+    sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '{{ mysql_root_password }}'; FLUSH PRIVILEGES;"
+  no_log: true
+  register: set_root_pw
+  changed_when: "'already exists' not in set_root_pw.stderr"
+
+- name: Create .my.cnf for automatic authentication
+  template:
+    src: my.cnf.j2
+    dest: /root/.my.cnf
+    owner: root
+    mode: 0600
+  no_log: true
+
+- name: Non-interactive MySQL secure installation
+  command: >
+    expect -c '
+    spawn mysql_secure_installation
+    expect "Enter current password for root (enter for none):"
+    send "{{ mysql_root_password }}\r"
+    expect "Switch to unix_socket authentication?"
+    send "n\r"
+    expect "Change the root password?"
+    send "n\r"
+    expect "Remove anonymous users?"
+    send "y\r"
+    expect "Disallow root login remotely?"
+    send "y\r"
+    expect "Remove test database and access to it?"
+    send "y\r"
+    expect "Reload privilege tables now?"
+    send "y\r"
+    expect eof
+    '
+  args:
+    executable: /usr/bin/expect
+  when: set_root_pw.changed
+  no_log: true
+
+
+- name: Verify MySQL security (fallback method)
+  block:
+    - name: Check if mysql_secure_installation exists
+      stat:
+        path: /usr/bin/mysql_secure_installation
+      register: mysql_secure_installed
+
+    - name: Remove anonymous users (direct method)
+      mysql_user:
+        name: ''
+        host_all: true
+        state: absent
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+      when: not mysql_secure_installed.stat.exists
+
+    - name: Remove test database (direct method)
+      mysql_db:
+        name: test
+        state: absent
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+      when: not mysql_secure_installed.stat.exists
+
+    - name: Secure root account
+      mysql_user:
+        name: root
+        host: localhost
+        password: "{{ mysql_root_password }}"
+        plugin: mysql_native_password
+        state: present
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+      when: not mysql_secure_installed.stat.exists
